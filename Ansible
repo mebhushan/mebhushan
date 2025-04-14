@@ -1,0 +1,56 @@
+
+---
+- name: VLAN Assignment - Fetch and Process VLAN Details
+  hosts: cisco_devices
+  gather_facts: no
+  connection: network_cli
+
+  tasks:
+    - name: Get VLAN details from device
+      ios_command:
+        commands:
+          - show vlan brief
+      register: vlan_output
+
+    - name: Debug raw VLAN output (for reference)
+      debug:
+        var: vlan_output.stdout_lines
+
+    - name: Parse VLAN details using TextFSM
+      # This task parses the raw VLAN output using a TextFSM template.
+      # Adjust the path to your TextFSM template file as necessary.
+      set_fact:
+        vlan_parsed: "{{ vlan_output.stdout[0] | cli_parse('templates/cisco_ios_show_vlan_brief.textfsm') }}"
+
+    - name: Debug parsed VLAN details
+      debug:
+        var: vlan_parsed
+
+    - name: Create sorted VLAN lists
+      set_fact:
+        # Extract all VLAN IDs, convert them to integers for numeric sorting, then back to strings.
+        all_vlans: "{{ vlan_parsed | map(attribute='vlan_id') | map('int') | sort | map('string') | list }}"
+        # A used VLAN is assumed to have a ports field not equal to '-' (adjust the condition based on your device output)
+        used_vlans: "{{ vlan_parsed | selectattr('ports', 'search', '^(?!-).+') | map(attribute='vlan_id') | map('int') | sort | map('string') | list }}"
+        # A free VLAN is indicated by ports field being exactly '-'
+        free_vlans: "{{ vlan_parsed | selectattr('ports', 'equalto', '-') | map(attribute='vlan_id') | map('int') | sort | map('string') | list }}"
+
+    - name: Show all VLANs sorted ascending
+      debug:
+        msg: "All VLANs: {{ all_vlans }}"
+
+    - name: Show used VLANs sorted ascending
+      debug:
+        msg: "Used VLANs: {{ used_vlans }}"
+
+    - name: Show free VLANs sorted ascending
+      debug:
+        msg: "Free VLANs: {{ free_vlans }}"
+
+
+
+
+
+
+
+| sort(reverse=True) for decending order 
