@@ -1,0 +1,38 @@
+---
+- name: Filter interfaces and remove duplicates
+  hosts: localhost
+  gather_facts: false
+  vars:
+    input_items:
+      - "interface gi0/0"
+      - "interface gi0/3"
+      - "interface gi0/2"
+      - "interface gi0/1"
+      - "interface gi0/2"
+      - "interface gi0/1"
+      - "vlan 1"
+      - "vlan 1"
+      - "vlan 5"
+      - "vlan 100"
+      - "FA 123"
+      - "FA 213"
+
+  tasks:
+
+    - name: Remove duplicates
+      set_fact:
+        unique_items: "{{ input_items | unique }}"
+
+    - name: Extract only 'interface' items starting with 'i'
+      set_fact:
+        filtered_interfaces: "{{ unique_items | select('match', '^interface') | list }}"
+
+    - name: Show filtered interfaces
+      debug:
+        var: filtered_interfaces
+
+    - name: Add interfaces to inventory as host var (example)
+      add_host:
+        name: filtered_device
+        groups: filtered_group
+        interfaces: "{{ filtered_interfaces }}"
