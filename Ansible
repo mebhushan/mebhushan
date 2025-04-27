@@ -1,56 +1,86 @@
+1. Confirm Desk-to-Patch Panel Connectivity
+Ask the user to coordinate with the Siemens IT team.
 
----
-- name: VLAN Assignment - Fetch and Process VLAN Details
-  hosts: cisco_devices
-  gather_facts: no
-  connection: network_cli
+Check if the user's desk port is properly cabled to a Patch Panel.
 
-  tasks:
-    - name: Get VLAN details from device
-      ios_command:
-        commands:
-          - show vlan brief
-      register: vlan_output
+Without physical cabling, the LAN port cannot be activated.
 
-    - name: Debug raw VLAN output (for reference)
-      debug:
-        var: vlan_output.stdout_lines
+2. Cabling from Patch Panel to Switch
+Once the desk-to-patch panel connectivity is confirmed,
 
-    - name: Parse VLAN details using TextFSM
-      # This task parses the raw VLAN output using a TextFSM template.
-      # Adjust the path to your TextFSM template file as necessary.
-      set_fact:
-        vlan_parsed: "{{ vlan_output.stdout[0] | cli_parse('templates/cisco_ios_show_vlan_brief.textfsm') }}"
+H&F Team will extend/patch a cable from the Patch Panel to a free port on the switch.
 
-    - name: Debug parsed VLAN details
-      debug:
-        var: vlan_parsed
+Ensure documentation of the cable number and patching details.
 
-    - name: Create sorted VLAN lists
-      set_fact:
-        # Extract all VLAN IDs, convert them to integers for numeric sorting, then back to strings.
-        all_vlans: "{{ vlan_parsed | map(attribute='vlan_id') | map('int') | sort | map('string') | list }}"
-        # A used VLAN is assumed to have a ports field not equal to '-' (adjust the condition based on your device output)
-        used_vlans: "{{ vlan_parsed | selectattr('ports', 'search', '^(?!-).+') | map(attribute='vlan_id') | map('int') | sort | map('string') | list }}"
-        # A free VLAN is indicated by ports field being exactly '-'
-        free_vlans: "{{ vlan_parsed | selectattr('ports', 'equalto', '-') | map(attribute='vlan_id') | map('int') | sort | map('string') | list }}"
+3. Mention the Business Need for the LAN Port
+Record why the port is needed:
 
-    - name: Show all VLANs sorted ascending
-      debug:
-        msg: "All VLANs: {{ all_vlans }}"
+New employee?
 
-    - name: Show used VLANs sorted ascending
-      debug:
-        msg: "Used VLANs: {{ used_vlans }}"
+Printer?
 
-    - name: Show free VLANs sorted ascending
-      debug:
-        msg: "Free VLANs: {{ free_vlans }}"
+Additional device?
 
+4. Determine the Device Type
+Find out what device will connect:
 
+Desktop, Laptop, Printer, VoIP Phone, etc.
 
+Some devices might need special VLANs (e.g., VoIP).
 
+5. Identify the Location
+Capture exact location:
 
+Building Name, Floor, Room Number, Desk Number.
 
+Also, check if there is already a LAN port available nearby.
 
-| sort(reverse=True) for decending order 
+6. Verify Ethernet Cable Availability
+Check if the user has a working LAN cable (Cat6 or Cat6a).
+
+If not, inform that H&F team will supply and it may be billable.
+
+7. Identify Switch & Switch Port
+Use MAC address of the device to find where it’s connected.
+
+Commands:
+
+bash
+Copy
+Edit
+show mac address-table address <mac-address>
+or using IAP tool if GUI is available.
+
+8. Configure Switch Port
+Configure VLAN as per requirement:
+
+Example:
+
+bash
+Copy
+Edit
+interface GigabitEthernet1/0/10
+switchport access vlan 610
+switchport mode access
+spanning-tree portfast
+Apply Port Security if needed (optional but recommended):
+
+bash
+Copy
+Edit
+switchport port-security
+switchport port-security maximum 2
+switchport port-security violation restrict
+9. Test New LAN Port
+Ensure:
+
+Device gets a correct IP Address (ping test gateway).
+
+Device can access required applications.
+
+No network drops.
+
+10. Close the Request
+Once everything is successful, update records (port info, MAC, IP details).
+
+Inform the user and close the service request.
