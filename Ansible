@@ -1,86 +1,96 @@
-1. Confirm Desk-to-Patch Panel Connectivity
-Ask the user to coordinate with the Siemens IT team.
+Objective:
+To automate the creation and configuration of a new restricted VLAN (rVLAN) at a Siemens location using Ansible. 
+Short description - Order a new restricted virtual LAN (rVLAN) at a specified Siemens location.
+Steps to Follow: -
+1.	Validate request for New restricted VLAN and Subnet required for new rVLAN.
+Procedure:
+Check if the request is raised via ServiceNow/any tool.
+Confirm if subnet, VLAN ID, location, and purpose are mentioned.
+            > in which tool or device, the request needs to validate.
+              we need to sample request to validate?
+              how we can validate?
+           >What parameters which need to validate, please specify the filters/condition which need to validate.
+           > which team will provide the subnet?
+> need manual steps and screenshot followed by the operation team for this steps.
+2. We need: Location, Building, Floor, Details.
+Procedure:
+•	Review the request for building, floor, site name.
+> who will provide the above asked information, is it needed to picked from the service request or if need to extract from any tool/data then what exactly the tool and process.
+> need the manual steps and screenshot for the same.
+3. is DHCP needed, is DNS needed, is Authentication (dot1x) needed? Number of usable/active clients (Subnet)
+Procedure:
+•	Ask customer if DHCP, DNS, and dot1x are needed.
+•	Confirm the expected number of devices (IP requirement).
 
-Check if the user's desk port is properly cabled to a Patch Panel.
+> Please explain the relation of above terms related to reservation of vlan and how we need to use the above information for reserving the vlan.
+> attach the manual process and screenshot followed by operation team to fulfill the above steps.
+4. For Manage ACL- here you need to firstly agree with Customer how they would like to order the changes, are the ACL the same as in CMO, should we utilize them? If yes, then a dedicated template will be there, and ACL details should be filled in that.
+Procedure:
+•	Check if ACLs exist in previous templates (e.g., CMO).
+•	Use automation templates if approved.
+>How the above steps need to fulfill using the automation tool. Is there any existing option in the service now where customer is updating. Also please explain how its is use to configure the vlan
+> need manual steps and screenshot which is followed by Ops team to fulfill the above steps.
+5. Choose VLAN name as per Siemens naming convention.
+> Please share the same
+     which team will provide VLAN name
+6. Choose a unique VLAN ID that doesn’t conflict with existing rVLAN (rVLAN series starts with 600)
+> Please specify the range use in siemens network
+     how to choose unique VLAN ID is it any reference please share me
+7. Specify the access control rules provided by the requestor (e.g., ACLs) to enforce restrictions.
+> who will provide and how
+> how to use the same please specify the command and Screenshot used by ops team manually
+8. Create rVLAN: Use commands create the new rVLAN.
+> On which switches/routers should we create this VLAN?
+>Where the rvlan need to create with commands
+9. Assign ports: Add the required ports to the new VLAN (Need to check with user for ports details)
+> how to check with user
+>Can you provide the port numbers or switch names?
+> share the manual steps and screenshot for the same
+10. Test Configuration: Verify the VLAN is functioning as intended and restrictions are applied correctly.
+> specify the test followed by Ops team manually with required condition and commands
+> attach the screenshot
+11. Check network accessibility and ensure the changes are effective.
+> please share the steps and screenshot
+12. Resolve any problems that arise post-implementation.
+> specify the standard problems and resolution which we can add in scripts to check
+ 
+Please note : above steps doesn’t help to understand the workflow follow from the starting to end (the request raised by customer till the ops till fulfill and close the request please also share the workflow diagram for the same.)
 
-Without physical cabling, the LAN port cannot be activated.
+below are the input requirement and procedure also mention
+Objective:
+To automate the creation and configuration of a new restricted VLAN (rVLAN) at a Siemens location using Ansible.
 
-2. Cabling from Patch Panel to Switch
-Once the desk-to-patch panel connectivity is confirmed,
+Input Required: Device Info, Authentication Details for Device, Subnet ID, Location, Building, Floor Details, ACL (Should we reuse existing ACLs? Or create a new one, if new provide access rules.), Port Details.
+Optional Input Required: DHCP, DNS, Authentication(dot1x)
 
-H&F Team will extend/patch a cable from the Patch Panel to a free port on the switch.
-
-Ensure documentation of the cable number and patching details.
-
-3. Mention the Business Need for the LAN Port
-Record why the port is needed:
-
-New employee?
-
-Printer?
-
-Additional device?
-
-4. Determine the Device Type
-Find out what device will connect:
-
-Desktop, Laptop, Printer, VoIP Phone, etc.
-
-Some devices might need special VLANs (e.g., VoIP).
-
-5. Identify the Location
-Capture exact location:
-
-Building Name, Floor, Room Number, Desk Number.
-
-Also, check if there is already a LAN port available nearby.
-
-6. Verify Ethernet Cable Availability
-Check if the user has a working LAN cable (Cat6 or Cat6a).
-
-If not, inform that H&F team will supply and it may be billable.
-
-7. Identify Switch & Switch Port
-Use MAC address of the device to find where it’s connected.
-
-Commands:
-
-bash
-Copy
-Edit
-show mac address-table address <mac-address>
-or using IAP tool if GUI is available.
-
-8. Configure Switch Port
-Configure VLAN as per requirement:
-
-Example:
-
-bash
-Copy
-Edit
-interface GigabitEthernet1/0/10
-switchport access vlan 610
+Process: 
+1. choose a Vlan Name according to Simens naming convention 
+    we got to know sample Vlan name according to siemens naming convention
+2. first Extract the used Vlan ID’s, now select Vlan ID which is not there in used Vlan ID’s
+3. Specify the access control rules provided by the requestor (e.g., ACLs) to enforce restrictions.
+4. Create rVlan: use the below command 
+ conf t
+ vlan <vlan-id>
+ name <vlan-name>
+ exit
+5. Assign Ports: use the below commands 
+configure terminal
+interface GigabitEthernet1/0/1
 switchport mode access
-spanning-tree portfast
-Apply Port Security if needed (optional but recommended):
+switchport access vlan 610
+exit
+6. Test Configuration: use below command
+show vlan brief
+show running-config interface GigabitEthernet1/0/1
+show access-lists
+show dot1x interface GigabitEthernet1/0/1
+7. Verify Test Connection: use below command 
+ping <gateway-IP>
+Note: observe the output of the command whether configure correctly or not, if not cross verify the process
 
-bash
-Copy
-Edit
-switchport port-security
-switchport port-security maximum 2
-switchport port-security violation restrict
-9. Test New LAN Port
-Ensure:
+work flow like:
+first start --> Validate rVLAN---> if yes or no ---> if yes go to INPUT required --> if no close the the req -->prevalidation input required -->  move to next step loke such type conditional and all
 
-Device gets a correct IP Address (ping test gateway).
 
-Device can access required applications.
 
-No network drops.
 
-10. Close the Request
-Once everything is successful, update records (port info, MAC, IP details).
-
-Inform the user and close the service request.
