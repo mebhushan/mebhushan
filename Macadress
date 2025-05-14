@@ -1,0 +1,60 @@
+---
+- name: Cisco Device - MAC Address Check and Port Learning
+  hosts: switches
+  gather_facts: no
+  vars:
+    mac_found_file: "./mac_found.txt"
+    mac_not_found_file: "./mac_not_found.txt"
+
+  tasks:
+
+    - name: Run command to get MAC address table
+      ansible.netcommon.cli_command:
+        command: show mac address-table
+      register: mac_output
+
+    - name: Find matching MAC line
+      set_fact:
+        matching_line: "{{ mac_output.stdout[0].split('\n') | select('search', (mac_to_check | regex_replace(':', '')).lower()) | list | first | default('') }}"
+
+    - name: Determine if MAC address is present
+      set_fact:
+        mac_present: "{{ matching_line != '' }}"
+
+    - name: Extract port/interface if MAC found
+      set_fact:
+        learned_port: >-
+          {% if mac_present %}
+          {{ matching_line.split()[-1] }}
+          {% else %}
+          N/A
+          {% endif %}
+
+    - name: Format message for user and file
+      set_fact:
+        user_message: >-
+          MAC: {{ mac_to_check }} | Present: {{ 'Yes' if mac_present else 'No' }} | Port: {{ learned_port }}
+
+    - name: Show result to user
+      debug:
+        msg: "{{ user_message }}"
+
+    - name: Append to 'mac_found.txt' if MAC is present
+      local_action:
+        module: lineinfile
+        path: "{{ mac_found_file }}"
+        line: "{{ user_message }}"
+        create: yes
+      delegate_to: localhost
+      when: mac_present
+      run_once: true
+
+    - name: Append to 'mac_not_found.txt' if MAC is NOT present
+      local_action:
+        module: lineinfile
+        path: "{{ mac_not_found_file }}"
+        line: "{{ user_message }}"
+        create: yes
+      delegate_to: localhost
+      when: not mac_present
+      run_once: true
