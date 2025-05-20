@@ -1,0 +1,92 @@
+---
+- name: Check MAC address presence and neighbor information
+  hosts: cisco_devices
+  gather_facts: no
+  connection: network_cli
+
+  vars:
+    target_mac_address: "00:1A:2B:3C:4D:5E" # Replace with the MAC address you want to check
+
+  tasks:
+    - name: Get MAC address table
+      ios_command:
+        commands:
+          - "show mac address-table | include {{ target_mac_address | upper }}"
+      register: mac_output
+
+    - name: Check if MAC address is present
+      debug:
+        msg: "MAC address {{ target_mac_address }} is NOT present on {{ inventory_hostname }}"
+      when: mac_output.stdout[0] | trim == "" # Check if the command output is empty
+
+    - name: Get neighbor information if MAC is present
+      block:
+        - name: Get CDP neighbor details
+          ios_command:
+            commands:
+              - "show cdp neighbor detail"
+          register: cdp_output
+
+        - name: Extract neighbor device names and identify learning device
+          set_fact:
+            neighbor_devices: [] # Initialize an empty list
+            learning_device_info: ""
+
+          when: mac_output.stdout[0] | trim != "" # Only if MAC is present
+
+        - name: Process CDP neighbor output
+          ansible.builtin.shell: |
+            python3 -c "
+            import re
+            cdp_output = '''{{ cdp_output.stdout[0] }}'''
+            mac_output_line = '''{{ mac_output.stdout[0] }}'''
+            target_mac = '{{ target_mac_address | upper }}'
+            neighbor_devices = []
+            learning_device_name = 'Unknown'
+            learning_interface = 'Unknown'
+
+            # Extract neighbor device names
+            device_names = re.findall(r'Device ID: ([\w.-]+)', cdp_output)
+            for name in device_names:
+                neighbor_devices.append(name)
+
+            # Determine which device is learning the MAC
+            if mac_output_line:
+                match = re.search(r'\s+\S+\s+(\S+)\s+\S+\s+\S+\s+(\S+)', mac_output_line)
+                if match:
+                    vlan = match.group(1)
+                    interface = match.group(2)
+
+                    # Now, try to map this interface to a CDP neighbor
+                    # This is a bit more complex as CDP output might not directly link MAC to interface
+                    # We'll check if the interface is mentioned in CDP output
+                    # A more robust solution might involve parsing 'show interface'
+                    
+                    # Simple check for interface in CDP output
+                    if interface in cdp_output:
+                        # Find the device ID associated with this interface in CDP output
+                        # This is a simplified approach, a more accurate method would involve parsing section by section
+                        device_id_match = re.search(r'Device ID: ([\w.-]+).*?Interface: ' + re.escape(interface) + r',', cdp_output, re.DOTALL)
+                        if device_id_match:
+                            learning_device_name = device_id_match.group(1)
+                            learning_interface = interface
+                        else:
+                            # If no direct match, assume the current device is learning it on that interface
+                            learning_device_name = '{{ inventory_hostname }}'
+                            learning_interface = interface
+                    else:
+                        learning_device_name = '{{ inventory_hostname }}'
+                        learning_interface = interface
+
+            print(f'{{{\"neighbor_devices\": {neighbor_devices}, \"learning_device_info\": \"The MAC address {target_mac} is learned by {learning_device_name} on interface {learning_interface} from {inventory_hostname}\"}}}')
+            "
+          register: processed_output
+          when: mac_output.stdout[0] | trim != ""
+
+        - name: Display neighbor devices and learning info
+          debug:
+            msg: |
+              Neighbor Devices: {{ (processed_output.stdout | from_json).neighbor_devices }}
+              {{ (processed_output.stdout | from_json).learning_device_info }}
+          when: mac_output.stdout[0] | trim != ""
+      when: mac_output.stdout[0] | trim != "" # Block only runs if MAC is present
