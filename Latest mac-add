@@ -1,0 +1,95 @@
+---
+- name: Trace MAC Address Across Cisco Devices
+  hosts: first_device
+  gather_facts: no
+  connection: ansible.netcommon.network_cli
+
+  vars:
+    mac_to_trace: "0050.56bf.7a2a"
+
+  tasks:
+    - name: Get MAC address table
+      cisco.ios.ios_command:
+        commands:
+          - show mac address-table
+      register: mac_output
+
+    - name: Find interface learning the MAC
+      set_fact:
+        learned_interface: >-
+          {{ mac_output.stdout[0] | regex_search(mac_to_trace ~ '\\s+\\S+\\s+(\\S+)', '\\1') }}
+
+    - name: Display MAC learning info
+      debug:
+        msg: >-
+          {% if learned_interface %}
+            MAC address {{ mac_to_trace }} is learned on interface {{ learned_interface }}.
+            Learning the connected device using CDP...
+          {% else %}
+            MAC address {{ mac_to_trace }} not found on this device.
+          {% endif %}
+
+    - name: Get CDP neighbor details
+      when: learned_interface is defined
+      cisco.ios.ios_command:
+        commands:
+          - show cdp neighbors detail
+      register: cdp_output
+
+    - name: Extract CDP neighbor on that interface
+      when: learned_interface is defined
+      set_fact:
+        neighbor_device_info: >-
+          {{
+            cdp_output.stdout[0] | regex_search(
+              'Device ID: (\\S+).*?Interface: ' ~ learned_interface ~ ',.*?IP address: (\\S+)',
+              multiline=True
+            )
+          }}
+    
+    - name: Display CDP neighbor info
+      when: neighbor_device_info is defined
+      debug:
+        msg: >-
+          Interface {{ learned_interface }} is connected to CDP neighbor device: {{ neighbor_device_info[0] }} (IP: {{ neighbor_device_info[1] }})
+
+    - name: Add CDP neighbor to dynamic inventory
+      when: neighbor_device_info is defined
+      add_host:
+        name: cdp_neighbor
+        ansible_host: "{{ neighbor_device_info[1] }}"
+        ansible_user: "{{ ansible_user }}"
+        ansible_password: "{{ ansible_password }}"
+        ansible_network_os: cisco.ios.ios
+        groups: traced_devices
+
+# -------- Play 2: Login to CDP Neighbor and check MAC again -------- #
+
+- name: Trace MAC in CDP neighbor device (Next Level)
+  hosts: traced_devices
+  gather_facts: no
+  connection: ansible.netcommon.network_cli
+
+  vars:
+    mac_to_trace: "0050.56bf.7a2a"
+
+  tasks:
+    - name: Get MAC address table from neighbor device
+      cisco.ios.ios_command:
+        commands:
+          - show mac address-table
+      register: mac_output_neighbor
+
+    - name: Find interface learning MAC in neighbor
+      set_fact:
+        learned_interface_neighbor: >-
+          {{ mac_output_neighbor.stdout[0] | regex_search(mac_to_trace ~ '\\s+\\S+\\s+(\\S+)', '\\1') }}
+
+    - name: Display MAC learning info on neighbor
+      debug:
+        msg: >-
+          {% if learned_interface_neighbor %}
+            MAC address {{ mac_to_trace }} is learned on interface {{ learned_interface_neighbor }} of the next-level device.
+          {% else %}
+            MAC address {{ mac_to_trace }} not found on the neighbor device.
+          {% endif %}
