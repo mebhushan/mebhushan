@@ -1,0 +1,39 @@
+---
+- name: Extract 2nd MAC and port from raw output
+  hosts: cisco
+  gather_facts: no
+
+  tasks:
+
+    - name: Run show mac address-table
+      cisco.ios.ios_command:
+        commands:
+          - show mac address-table
+      register: mac_table_raw
+
+    - name: Filter valid MAC address lines from raw output
+      set_fact:
+        mac_lines: >-
+          {{ mac_table_raw.stdout[0].split('\n')
+             | select('match', '^\\s*\\d+\\s+[0-9a-fA-F.]+\\s+\\S+\\s+\\S+')
+             | list }}
+
+    - name: Extract second MAC line details
+      set_fact:
+        second_mac_fields: "{{ mac_lines[1].split() }}"
+        second_mac_address: "{{ second_mac_fields[1] }}"
+        second_mac_port: "{{ second_mac_fields[-1] }}"
+
+    - name: Show extracted MAC and port
+      debug:
+        msg: "Second MAC: {{ second_mac_address }}, Port: {{ second_mac_port }}"
+
+    - name: Show CDP neighbor detail on extracted port
+      cisco.ios.ios_command:
+        commands:
+          - "show cdp neighbors interface {{ second_mac_port }} detail"
+      register: cdp_result
+
+    - name: Print CDP output
+      debug:
+        var: cdp_result.stdout_lines
