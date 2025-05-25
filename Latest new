@@ -1,0 +1,65 @@
+---
+- name: MAC Trace and CDP Neighbor Check
+  hosts: switches
+  gather_facts: no
+  vars:
+    mac_list:
+      - "0011.2233.4455"
+      - "aabb.ccdd.eeff"
+
+  tasks:
+
+    - name: Search MAC in table
+      ios_command:
+        commands: "show mac address-table | include {{ item }}"
+      loop: "{{ mac_list }}"
+      register: mac_output
+
+    - name: Notify user whether MAC was found or not
+      debug:
+        msg: >-
+          MAC {{ item.item }} on {{ inventory_hostname }}:
+          {% if item.stdout[0] != '' %}
+             FOUND -> {{ item.stdout[0] }}
+          {% else %}
+             NOT FOUND
+          {% endif %}
+      loop: "{{ mac_output.results }}"
+
+    - name: Extract port for each MAC found
+      set_fact:
+        mac_ports: >-
+          {{
+            mac_ports | default({}) | combine({
+              item.item: (item.stdout[0].split()[-2]) if item.stdout[0] != '' else 'NOT_FOUND'
+            })
+          }}
+      loop: "{{ mac_output.results }}"
+
+    - name: Check CDP neighbor on each valid port
+      when: mac_ports[item] != 'NOT_FOUND'
+      ios_command:
+        commands: "show cdp neighbors {{ mac_ports[item] }} detail"
+      loop: "{{ mac_list }}"
+      loop_control:
+        loop_var: item
+      register: cdp_results
+
+    - name: Notify about neighbor or endpoint
+      debug:
+        msg: >-
+          MAC {{ item.item }} on port {{ mac_ports[item.item] }}:
+          {% if 'Device ID' in item.stdout[0] %}
+            🤝 CDP Neighbor FOUND
+          {% else %}
+            ⚠️ No neighbor → Marked as endpoint device
+          {% endif %}
+      loop: "{{ cdp_results.results }}"
+
+    - name: Log endpoint devices
+      when: "'Device ID' not in item.stdout[0]"
+      lineinfile:
+        path: "endpoint_log.txt"
+        line: "MAC {{ item.item }} is connected to endpoint on port {{ mac_ports[item.item] }} of {{ inventory_hostname }}"
+        create: yes
+      loop: "{{ cdp_results.results }}"
