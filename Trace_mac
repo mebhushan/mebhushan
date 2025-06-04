@@ -1,0 +1,12 @@
+---
+- name: Loop through MAC addresses
+  hosts: network
+  gather_facts: no
+  vars_files:
+    - macs.yml
+  tasks:
+    - name: Trace each MAC address
+      include_tasks: trace_mac_single.yml
+      loop: "{{ mac_addresses }}"
+      loop_control:
+        loop_var: target_mac
