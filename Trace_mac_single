@@ -1,0 +1,60 @@
+---
+- name: Start tracing for MAC {{ target_mac }}
+  debug:
+    msg: "🔍 Tracing MAC {{ target_mac }}"
+
+- name: Reset visited devices
+  set_fact:
+    visited_devices: []
+
+- name: Get MAC address table
+  ios_command:
+    commands: "show mac address-table"
+  register: mac_table
+
+- name: Extract MAC interface
+  set_fact:
+    mac_line: "{{ mac_table.stdout[0] | regex_search(target_mac + '.*') | default('') }}"
+    mac_interface: "{{ mac_line.split()[1] if mac_line != '' else '' }}"
+
+- name: Show result if MAC found
+  debug:
+    msg: "✅ MAC {{ target_mac }} found on interface {{ mac_interface }}"
+  when: mac_interface != ''
+
+- name: Get CDP neighbor
+  ios_command:
+    commands: "show cdp neighbors {{ mac_interface }} detail"
+  register: cdp_detail
+  when: mac_interface != ''
+
+- name: Extract neighbor details
+  set_fact:
+    next_host: "{{ cdp_detail.stdout[0] | regex_search('Device ID: (\\S+)', '\\1') | default('') }}"
+    next_ip: "{{ cdp_detail.stdout[0] | regex_search('IP address: (\\S+)', '\\1') | default('') }}"
+  when: mac_interface != ''
+
+- name: Skip if already visited
+  debug:
+    msg: "⚠️ Already visited {{ next_host }}"
+  when: next_host in visited_devices
+
+- name: Add neighbor to inventory and mark visited
+  block:
+    - name: Add to inventory
+      add_host:
+        name: "{{ next_host }}"
+        ansible_host: "{{ next_ip }}"
+        ansible_user: admin
+        ansible_password: admin
+        ansible_network_os: ios
+        groups: dynamic_chain
+
+    - name: Track visited
+      set_fact:
+        visited_devices: "{{ visited_devices + [next_host] }}"
+  when: next_host not in visited_devices
+
+- name: Continue tracing on neighbor
+  include_tasks: trace_mac_step.yml
+  when: next_host not in visited_devices
