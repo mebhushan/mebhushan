@@ -1,6 +1,6 @@
 ---
 - name: Loop through MAC addresses
-  hosts: network
+  hosts: switches
   gather_facts: no
   vars_files:
     - macs.yml
