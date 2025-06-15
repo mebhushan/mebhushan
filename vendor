@@ -154,5 +154,14 @@
 - name: Debug CDP/LLDP neighbors
   debug:
     msg: "MAC tracing complete on all reachable neighbors from {{ inventory_hostname }}"
-  when: new-neighbors | length == 0
+  when: new-neighbors | length == 0  
+
+
+Input a MAC address.
+Search for the MAC address on the first device (could be Cisco or Aruba).
+When the MAC is found on a specific interface, run a CDP (for Cisco) or LLDP (for Aruba) neighbor query on that interface.
+Extract the neighbor device’s name and IP address from that query.
+Log in to the neighbor device (whether Cisco or Aruba) and repeat the MAC address search.
+Continue recursively until the MAC is found on a port with no neighbor (endpoint device).
+ 
 
