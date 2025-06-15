@@ -126,3 +126,31 @@
     current_device: "{{ item[1] }}"
     visited_devices: "{{ visited_devices + [item[1]] }}"
   when: new_neighbors | length > 0
+
+
+
+
+
+---
+- name: Recursive MAC address search
+  hosts: switches, aruba
+  gather_facts: no
+  vars_files:
+    - vars.yml   # contains mac_addresses list
+
+  vars:
+    visited_devices: []
+  tasks:
+    - name: Set initial visited_devices if undefined
+      set_fact:
+        visited_devices: []
+      when: visited_devices is not defined
+
+    - name: Set current_device to inventory_hostname if not defined
+      set_fact:
+        current_device: "{{ inventory_hostname }}"
+      when: current_device is not defined
+
+    - name: Search MAC and recurse on device
+      include_tasks: mac_search_recurse.yml
+
