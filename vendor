@@ -331,6 +331,160 @@ ok: [switch1] => (item=['5254.0002.3301', None]) => {
     "msg": "MAC address 5254.0002.3301 found on device switch1 at interface "
 }
 but actually  5254.0002.3301  this mac not present in mac table but also show found on device 
+========================================================================================================================
+*************************************
+---
+- name: Ensure current_device and visited_devices are defined
+  set_fact:
+    current_device: "{{ current_device | default(inventory_hostname) }}"
+    visited_devices: "{{ visited_devices | default([]) }}"
+
+- name: Add current device to visited list
+  set_fact:
+    visited_devices: "{{ visited_devices + [current_device] }}"
+  when: current_device not in visited_devices
+
+- name: Search for MAC address on Cisco devices
+  ios_command:
+    commands:
+      - "show mac address-table | include {{ item }}"
+  with_items: "{{ mac_addresses }}"
+  register: ios_mac_search
+  when: ansible_network_os == 'ios' and inventory_hostname == current_device
+
+- name: Search for MAC address on Aruba devices
+  cli_command:
+    command: "show mac-address-table | include {{ item }}"
+  with_items: "{{ mac_addresses }}"
+  register: aruba_mac_search
+  when: ansible_network_os == 'aruba' and inventory_hostname == current_device
+
+- name: Combine MAC search results
+  set_fact:
+    mac_search_results: >-
+      {{
+        (ios_mac_search.results if ios_mac_search is defined else [])
+        if ansible_network_os == 'ios'
+        else (aruba_mac_search.results if aruba_mac_search is defined else [])
+      }}
+
+- name: Debug MAC search results on {{ current_device }}
+  debug:
+    var: mac_search_results
+
+# ✅ Extract MAC + Interface pairs
+- name: Extract MAC and Interface pairs from MAC search results
+  set_fact:
+    found_mac_pairs: >-
+      {{
+        mac_search_results
+        | map(attribute='stdout')
+        | map('join')
+        | map('regex_search', '([0-9a-fA-F.:-]{4,})\\s+.*?([A-Za-z0-9]+[0-9/]+)$')
+        | reject('equalto', None)
+        | list
+      }}
+
+- name: Extract interfaces only (for CDP/LLDP)
+  set_fact:
+    mac_interfaces: "{{ found_mac_pairs | map('last') | list }}"
+
+- name: Debug MACs found on {{ current_device }}
+  debug:
+    msg: "MAC address {{ item.0 }} found on device {{ current_device }} at interface {{ item.1 }}"
+  with_items: "{{ found_mac_pairs }}"
+  when: found_mac_pairs | length > 0
+
+- name: Debug if MACs not found
+  debug:
+    msg: "MAC address {{ item }} was NOT found on {{ current_device }}"
+  with_items: "{{ mac_addresses }}"
+  when: item not in (found_mac_pairs | map('first') | list)
+
+- name: Fail if no MACs were found
+  fail:
+    msg: "No MAC addresses found on device {{ current_device }}, stopping recursion."
+  when: found_mac_pairs | length == 0
+
+# CDP/LLDP lookup
+- name: Run CDP neighbors query on Cisco devices
+  ios_command:
+    commands:
+      - "show cdp neighbors {{ item }} detail"
+  with_items: "{{ mac_interfaces }}"
+  register: cdp_results
+  when: ansible_network_os == 'ios'
+
+- name: Run LLDP neighbors query on Aruba devices
+  cli_command:
+    command: "show lldp neighbors interface {{ item }}"
+  with_items: "{{ mac_interfaces }}"
+  register: lldp_results
+  when: ansible_network_os == 'aruba'
+
+# Neighbor extraction
+- name: Extract CDP neighbor info
+  set_fact:
+    neighbors: >-
+      {{
+        (cdp_results.results | map(attribute='stdout') | map('join') | map('regex_findall', 'Device ID: (\\S+).*?IP address: (\\S+)', multiline=True)) | list | flatten
+      }}
+  when: ansible_network_os == 'ios' and cdp_results is defined
+
+- name: Extract LLDP neighbor info
+  set_fact:
+    neighbors: >-
+      {{
+        (lldp_results.results | map(attribute='stdout') | map('join') | map('regex_findall', 'System Name: (\\S+).*?Management Address: (\\S+)', multiline=True)) | list | flatten
+      }}
+  when: ansible_network_os == 'aruba' and lldp_results is defined
+
+- name: Debug neighbors found
+  debug:
+    msg: "Discovered neighbor: {{ item }}"
+  with_items: "{{ neighbors }}"
+  when: neighbors is defined and neighbors | length > 0
+
+- name: Debug if no neighbors found
+  debug:
+    msg: "No CDP/LLDP neighbors found on {{ current_device }} — this might be the end device."
+  when: neighbors is not defined or neighbors | length == 0
+
+# Filter and recurse
+- name: Filter out already visited devices
+  set_fact:
+    new_neighbors: "{{ [] }}"
+
+- name: Filter unvisited neighbors (Ansible 2.9 workaround)
+  set_fact:
+    new_neighbors: "{{ new_neighbors + [item] }}"
+  with_items: "{{ neighbors }}"
+  when: item[1] not in visited_devices
+
+- name: Debug new neighbors
+  debug:
+    var: new_neighbors
+
+- name: Add dynamic hosts for new neighbors
+  add_host:
+    name: "{{ item[1] }}"
+    ansible_host: "{{ item[1] }}"
+    ansible_network_os: "{{ 'aruba' if 'Aruba' in item[0] else 'ios' }}"
+  with_items: "{{ new_neighbors }}"
+  when: new_neighbors | length > 0
+
+- name: Recurse into each new neighbor
+  include_tasks: mac_search_recurse.yml
+  with_items: "{{ new_neighbors }}"
+  vars:
+    current_device: "{{ item[1] }}"
+    visited_devices: "{{ visited_devices + [item[1]] }}"
+  when: new_neighbors | length > 0
+
+- name: Final message if no neighbors found
+  debug:
+    msg: "MAC tracing complete from {{ current_device }} — endpoint reached."
+  when: new_neighbors | length == 0
 
 
  
