@@ -211,7 +211,7 @@ Continue recursively until the MAC is found on a port with no neighbor (endpoint
         mac_search_results
         | map(attribute='stdout')
         | map('join')          
-        | map('regex_search', '([A-Za-z0-9]+[0-9/]+)$')
+        | map('regex_search', '([0-9a-fA-F.:-]{4,})\\s+.*?([A-Za-z0-9]+[0-9/]+)$')
         | reject('equalto', None)
         | list
       }}
@@ -222,8 +222,9 @@ Continue recursively until the MAC is found on a port with no neighbor (endpoint
 
 - name: Debug if MAC not found {{ current_device }}
   debug:
-    msg: "NO MAC address  found on  {{ current_device }} for the given  MAC List:  {{ mac_addresses }}"
-  when: mac_interfaces | length == 0
+   msg: "MAC address {{ item }} was NOT found on {{ current_device }}"
+  with_items: "{{ mac_addresses }}"
+  when: item not in (found_mac_pairs | map('first') | list)
 
 - name: Fail if no MAC found on {{ current_device }}
   fail:
@@ -233,10 +234,7 @@ Continue recursively until the MAC is found on a port with no neighbor (endpoint
 - name: Debug if MAC found on {{ current_device }}
   debug:
     msg:  "MAC address {{ item.0 }} found on device {{ current_device }} at interface {{ item.1 }}"
-  with_together:
-     - "{{ mac_addresses }}"
-     - "{{ mac_interfaces }}"
-  when: mac_interfaces | length > 0
+  with_items: "{{ found_mac_pairs }}"
 
 - name: Run CDP neighbors query on Cisco devices
   ios_command:
