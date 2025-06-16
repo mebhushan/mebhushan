@@ -157,6 +157,40 @@
   when: new_neighbors | length == 0
 
   
+# ✅ Extract MAC + Interface pairs correctly
+- name: Extract MAC and Interface pairs from MAC search results
+  set_fact:
+    found_mac_pairs: >-
+      {{
+        mac_search_results
+        | map(attribute='stdout')
+        | map('join')
+        | map('regex_search', '([0-9a-fA-F.:-]{4,})\\s+.*?([A-Za-z0-9]+[0-9/]+)$')
+        | reject('equalto', None)
+        | list
+      }}
+
+- name: Debug MACs correctly found on {{ current_device }}
+  debug:
+    msg: "MAC address {{ item.0 }} found on device {{ current_device }} at interface {{ item.1 }}"
+  with_items: "{{ found_mac_pairs }}"
+
+- name: Extract interfaces only (for CDP/LLDP query)
+  set_fact:
+    mac_interfaces: "{{ found_mac_pairs | map('last') | list }}"
+
+# ✅ Extra: Show which MACs were not found
+- name: Debug MACs NOT found on {{ current_device }}
+  debug:
+    msg: "MAC address {{ item }} was NOT found on {{ current_device }}"
+  with_items: "{{ mac_addresses }}"
+  when: item not in (found_mac_pairs | map('first') | list)
+
+# ✅ Fail if no MACs matched
+- name: Fail if no MAC addresses matched
+  fail:
+    msg: "No MAC addresses found on {{ current_device }}."
+  when: found_mac_pairs | length == 0
 
 
 Input a MAC address.
