@@ -191,6 +191,14 @@
   fail:
     msg: "No MAC addresses found on {{ current_device }}."
   when: found_mac_pairs | length == 0
+TASK [Debug MACs NOT found on switch1] **********************************************************************************************************************
+ok: [switch1] => (item=5254.001b.1d83) => {
+    "msg": "MAC address 5254.001b.1d83 was NOT found on switch1"
+}
+ok: [switch1] => (item=5254.0002.3301) => {
+    "msg": "MAC address 5254.0002.3301 was NOT found on switch1"
+}
+
 
 
 Input a MAC address.
