@@ -158,33 +158,36 @@
 
   
 # ✅ Extract MAC + Interface pairs correctly
-- name: Extract MAC and Interface pairs from MAC search results
+- name: Extract all MAC and interface pairs reliably
   set_fact:
     found_mac_pairs: >-
       {{
         mac_search_results
         | map(attribute='stdout')
         | map('join')
-        | map('regex_search', '([0-9a-fA-F.:-]{4,})\\s+.*?([A-Za-z0-9]+[0-9/]+)$')
-        | reject('equalto', None)
+        | map('regex_findall', '([0-9a-fA-F.:-]{4,})\\s+\\S+\\s+([A-Za-z0-9/]+)')
         | list
+        | flatten(1)
       }}
+- name: Convert MAC-interface list to dictionary
+  set_fact:
+    mac_found_dict: "{{ dict(found_mac_pairs) }}"
 
-- name: Debug MACs correctly found on {{ current_device }}
+- name: ✅ MACs FOUND on {{ current_device }}
   debug:
-    msg: "MAC address {{ item.0 }} found on device {{ current_device }} at interface {{ item.1 }}"
-  with_items: "{{ found_mac_pairs }}"
+    msg: "✅ MAC {{ item.key }} found on {{ current_device }} at interface {{ item.value }}"
+  with_dict: "{{ mac_found_dict }}"
+  when: item.value is not none
 
 - name: Extract interfaces only (for CDP/LLDP query)
   set_fact:
-    mac_interfaces: "{{ found_mac_pairs | map('last') | list }}"
+    mac_interfaces: "{{ mac_found_dict.values() | reject('equalto', none) | list }}"
 
-# ✅ Extra: Show which MACs were not found
-- name: Debug MACs NOT found on {{ current_device }}
+- name: ❌ MACs NOT FOUND on {{ current_device }}
   debug:
-    msg: "MAC address {{ item }} was NOT found on {{ current_device }}"
-  with_items: "{{ mac_addresses }}"
-  when: item not in (found_mac_pairs | map('first') | list)
+    msg: "❌ MAC {{ item.key }} was NOT found on {{ current_device }}"
+  with_dict: "{{ mac_found_dict }}"
+  when: item.value is none
 
 # ✅ Fail if no MACs matched
 - name: Fail if no MAC addresses matched
