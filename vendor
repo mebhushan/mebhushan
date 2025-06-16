@@ -419,81 +419,25 @@ Continue recursively until the MAC is found on a port with no neighbor (endpoint
     msg: "MAC tracing complete on all reachable neighbors from {{ inventory_hostname }}"
   when: new_neighbors | length == 0  
 
-TASK [Debug MAC search results on switch1] ******************************************************************************************************************
-ok: [switch1] => {
-    "mac_search_results": [
-        {
-            "ansible_facts": {
-                "discovered_interpreter_python": "/usr/libexec/platform-python"
-            },
-            "ansible_loop_var": "item",
-            "changed": false,
-            "failed": false,
-            "invocation": {
-                "module_args": {
-                    "auth_pass": null,
-                    "authorize": null,
-                    "commands": [
-                        "show mac address-table | include 5254.001b.1d83"
-                    ],
-                    "host": null,
-                    "interval": 1,
-                    "match": "all",
-                    "password": null,
-                    "port": null,
-                    "provider": null,
-                    "retries": 10,
-                    "ssh_keyfile": null,
-                    "timeout": null,
-                    "username": null,
-                    "wait_for": null
-                }
-            },
-            "item": "5254.001b.1d83",
-            "stdout": [
-                "1    5254.001b.1d83    DYNAMIC     Gi0/2"
-            ],
-            "stdout_lines": [
-                [
-                    "1    5254.001b.1d83    DYNAMIC     Gi0/2"
-                ]
-            ]
-        },
-        {
-            "ansible_loop_var": "item",
-            "changed": false,
-            "failed": false,
-            "invocation": {
-                "module_args": {
-                    "auth_pass": null,
-                    "authorize": null,
-                    "commands": [
-                        "show mac address-table | include 5254.0002.3301"
-                    ],
-                    "host": null,
-                    "interval": 1,
-                    "match": "all",
-                    "password": null,
-                    "port": null,
-                    "provider": null,
-                    "retries": 10,
-                    "ssh_keyfile": null,
-                    "timeout": null,
-                    "username": null,
-                    "wait_for": null
-                }
-            },
-            "item": "5254.0002.3301",
-            "stdout": [
-                ""
-            ],
-            "stdout_lines": [
-                [
-                    ""
-                ]
-            ]
-        }
-    ]
-}
+- name: Extract MAC and Interface pairs from MAC search results
+  set_fact:
+    found_mac_pairs: >-
+      {{
+        mac_search_results
+        | selectattr('stdout', 'defined')
+        | map(attribute='stdout')
+        | map('first')
+        | reject('equalto', '')
+        | map('regex_search', '([0-9a-fA-F.:-]{4,})\\s+\\S+\\s+\\S+\\s+([A-Za-z0-9/]+)')
+        | reject('equalto', None)
+        | list
+      }}
+
+- name: Split MAC/interface strings
+  set_fact:
+    found_mac_pairs: "{{ found_mac_pairs + [[item.split()[0], item.split()[1]]] }}"
+  with_items: "{{ found_mac_pairs }}"
+  when: item.split() | length == 2
+
 
 
