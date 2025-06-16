@@ -32,10 +32,7 @@
           if ansible_network_os == 'ios'
           else (aruba_mac_search.results if aruba_mac_search is defined else [])
         }}
-      # {{
-      #   (ios_mac_search.results | default([])) if ansible_network_os == 'ios'
-      #   else (aruba_mac_search.results | default([]))
-      # }}
+     
 
 - name: Debug MAC search results on {{ current_device }}
   debug:
@@ -69,7 +66,10 @@
 
 - name: Debug if MAC found on {{ current_device }}
   debug:
-    msg: " MAC address  found on  {{ current_device }}. Interfaces:  {{ mac_interfaces }}"
+    msg:  "MAC address {{ item.0 }} found on device {{ current_device }} at interface {{ item.1 }}"
+  with_together:
+     - "{{ mac_addresses }}"
+     - "{{ mac_interfaces }}"
   when: mac_interfaces | length > 0
 
 - name: Run CDP neighbors query on Cisco devices
@@ -154,7 +154,9 @@
 - name: Debug CDP/LLDP neighbors
   debug:
     msg: "MAC tracing complete on all reachable neighbors from {{ inventory_hostname }}"
-  when: new-neighbors | length == 0  
+  when: new_neighbors | length == 0
+
+  
 
 
 Input a MAC address.
